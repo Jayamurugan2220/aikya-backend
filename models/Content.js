@@ -70,23 +70,39 @@ const whyChooseSchema = new mongoose.Schema({
 const contactSchema = new mongoose.Schema({
   heading: {
     type: String,
-    default: 'Get In Touch',
+    default: "Let's Build",
+  },
+  headingHighlight: {
+    type: String,
+    default: 'Together',
   },
   description: {
     type: String,
-    default: "Have a project in mind? Let's discuss how we can help.",
+    default: "Ready to transform your dreams into reality? Partner with India's leading real estate developer.",
   },
-  email: {
+  companyName: {
     type: String,
-    default: 'contact@aikyabuilders.com',
-  },
-  phone: {
-    type: String,
-    default: '+91 1234567890',
+    default: 'AIKYA BUILDERS PVT LTD',
   },
   address: {
     type: String,
-    default: 'Chennai, India',
+    default: 'No 251, TNHB Colony, Tambaram Sanatorium, Chennai - 600 047',
+  },
+  contactPersons: {
+    type: String,
+    default: 'B. GOPALAKRISHNAN / M B FURHAN SIDDIQ',
+  },
+  phone: {
+    type: String,
+    default: '+91 98765 43210',
+  },
+  email: {
+    type: String,
+    default: 'aikyabuilders@gmail.com',
+  },
+  mapCoordinates: {
+    type: String,
+    default: '12.92,80.12',
   },
   updatedAt: {
     type: Date,
