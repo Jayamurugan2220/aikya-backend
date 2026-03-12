@@ -231,11 +231,18 @@ router.get('/projects/items', async (req, res) => {
     const items = await ProjectItem.find(query).sort({ createdAt: -1 });
     const allProjects = await ProjectItem.find();
     const categories = [...new Set(allProjects.map(p => p.category).filter(Boolean))];
+    const locations = [...new Set(allProjects.map(p => {
+      // Extract the main city/town from location string (e.g., "Tambaram, Chennai" -> "Chennai")
+      if (!p.location) return null;
+      const parts = p.location.split(',');
+      return parts[parts.length - 1].trim(); // Use last part as main location
+    }).filter(Boolean))];
     
     res.json({ 
       success: true, 
       data: items,
       categories,
+      locations,
       stats: {
         total: allProjects.length,
         ongoing: allProjects.filter(p => p.status === 'ongoing').length,
