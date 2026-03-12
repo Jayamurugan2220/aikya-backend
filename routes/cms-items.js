@@ -28,6 +28,7 @@ import {
 import User from '../models/User.js';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { updateItemWithImageCleanup, deleteItemWithImageCleanup } from '../utils/imageCleanup.js';
 
 const router = express.Router();
 
@@ -159,20 +160,15 @@ router.put('/news/articles/:id', verifyAdmin, async (req, res) => {
       updateData.publishedDate = new Date();
     }
 
-    const article = await NewsArticle.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    );
-
-    if (!article) {
-      return res.status(404).json({ success: false, message: 'Article not found' });
-    }
+    // Update with automatic image cleanup
+    const result = await updateItemWithImageCleanup('news', req.params.id, updateData);
 
     res.json({ 
       success: true, 
-      data: article, 
-      message: 'Article updated successfully' 
+      data: result.item, 
+      cleanup: result.cleanup,
+      message: 'Article updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -182,15 +178,14 @@ router.put('/news/articles/:id', verifyAdmin, async (req, res) => {
 // Delete article
 router.delete('/news/articles/:id', verifyAdmin, async (req, res) => {
   try {
-    const article = await NewsArticle.findByIdAndDelete(req.params.id);
-
-    if (!article) {
-      return res.status(404).json({ success: false, message: 'Article not found' });
-    }
+    // Delete with automatic image cleanup
+    const result = await deleteItemWithImageCleanup('news', req.params.id);
 
     res.json({ 
-      success: true, 
-      message: 'Article deleted successfully' 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Article deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -202,7 +197,7 @@ router.delete('/news/articles/:id', verifyAdmin, async (req, res) => {
 // Get all projects with filters
 router.get('/projects/items', async (req, res) => {
   try {
-    const { category, status, search } = req.query;
+    const { category, status, location, area, search } = req.query;
     
     let query = {};
     
@@ -215,10 +210,21 @@ router.get('/projects/items', async (req, res) => {
       query.status = status;
     }
     
+    // Location filter (e.g., chennai, tirunelveli)
+    if (location && location !== 'all') {
+      query.location = { $regex: location, $options: 'i' };
+    }
+    
+    // Area filter (for Chennai subdivisions)
+    if (area && area !== 'all') {
+      query.area = area;
+    }
+    
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { location: { $regex: search, $options: 'i' } }
+        { location: { $regex: search, $options: 'i' } },
+        { area: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -234,7 +240,9 @@ router.get('/projects/items', async (req, res) => {
         total: allProjects.length,
         ongoing: allProjects.filter(p => p.status === 'ongoing').length,
         completed: allProjects.filter(p => p.status === 'completed').length,
-        upcoming: allProjects.filter(p => p.status === 'upcoming').length
+        upcoming: allProjects.filter(p => p.status === 'upcoming').length,
+        chennai: allProjects.filter(p => p.location?.toLowerCase().includes('chennai')).length,
+        withArea: allProjects.filter(p => p.area).length
       }
     });
   } catch (error) {
@@ -275,20 +283,15 @@ router.post('/projects/items', verifyAdmin, async (req, res) => {
 // Update project
 router.put('/projects/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updatedProject = await ProjectItem.findByIdAndUpdate(
-      req.params.id, 
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    
-    if (!updatedProject) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
+    // Update with automatic image cleanup
+    const result = await updateItemWithImageCleanup('projects', req.params.id, req.body);
 
     res.json({ 
       success: true, 
-      data: updatedProject, 
-      message: 'Project updated successfully' 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Project updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -298,15 +301,14 @@ router.put('/projects/items/:id', verifyAdmin, async (req, res) => {
 // Delete project
 router.delete('/projects/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await ProjectItem.findByIdAndDelete(req.params.id);
-    
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: 'Project not found' });
-    }
+    // Delete with automatic image cleanup
+    const result = await deleteItemWithImageCleanup('projects', req.params.id);
 
     res.json({ 
-      success: true, 
-      message: 'Project deleted successfully' 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Project deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -371,20 +373,14 @@ router.post('/services/items', verifyAdmin, async (req, res) => {
 // Update service
 router.put('/services/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const service = await ServiceItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true, runValidators: true }
-    );
-
-    if (!service) {
-      return res.status(404).json({ success: false, message: 'Service not found' });
-    }
+    const result = await updateItemWithImageCleanup('services', req.params.id, req.body);
 
     res.json({ 
       success: true, 
-      data: service, 
-      message: 'Service updated successfully' 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Service updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -394,15 +390,13 @@ router.put('/services/items/:id', verifyAdmin, async (req, res) => {
 // Delete service
 router.delete('/services/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const service = await ServiceItem.findByIdAndDelete(req.params.id);
-
-    if (!service) {
-      return res.status(404).json({ success: false, message: 'Service not found' });
-    }
+    const result = await deleteItemWithImageCleanup('services', req.params.id);
 
     res.json({ 
-      success: true, 
-      message: 'Service deleted successfully' 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Service deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -458,17 +452,15 @@ router.post('/testimonials/items', verifyAdmin, async (req, res) => {
 
 router.put('/testimonials/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updatedTestimonial = await TestimonialItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    
-    if (!updatedTestimonial) {
-      return res.status(404).json({ success: false, message: 'Testimonial not found' });
-    }
+    const result = await updateItemWithImageCleanup('testimonials', req.params.id, req.body);
 
-    res.json({ success: true, data: updatedTestimonial, message: 'Testimonial updated successfully' });
+    res.json({ 
+      success: true, 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Testimonial updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -476,13 +468,14 @@ router.put('/testimonials/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/testimonials/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await TestimonialItem.findByIdAndDelete(req.params.id);
-    
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: 'Testimonial not found' });
-    }
+    const result = await deleteItemWithImageCleanup('testimonials', req.params.id);
 
-    res.json({ success: true, message: 'Testimonial deleted successfully' });
+    res.json({ 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Testimonial deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -573,20 +566,14 @@ router.post('/special-offers/items', verifyAdmin, async (req, res) => {
 
 router.put('/special-offers/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updatedOffer = await SpecialOfferItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    
-    if (!updatedOffer) {
-      return res.status(404).json({ success: false, message: 'Special offer not found' });
-    }
+    const result = await updateItemWithImageCleanup('special-offers', req.params.id, req.body);
 
     res.json({ 
       success: true, 
-      data: updatedOffer, 
-      message: 'Special offer updated successfully' 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Special offer updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -595,15 +582,13 @@ router.put('/special-offers/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/special-offers/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await SpecialOfferItem.findByIdAndDelete(req.params.id);
-    
-    if (!deleted) {
-      return res.status(404).json({ success: false, message: 'Special offer not found' });
-    }
+    const result = await deleteItemWithImageCleanup('special-offers', req.params.id);
 
     res.json({ 
-      success: true, 
-      message: 'Special offer deleted successfully' 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Special offer deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -719,17 +704,15 @@ router.post('/csr/initiatives', verifyAdmin, async (req, res) => {
 
 router.put('/csr/initiatives/:id', verifyAdmin, async (req, res) => {
   try {
-    const initiative = await CSRItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true, runValidators: true }
-    );
+    const result = await updateItemWithImageCleanup('csr', req.params.id, req.body);
 
-    if (!initiative) {
-      return res.status(404).json({ success: false, message: 'Initiative not found' });
-    }
-
-    res.json({ success: true, data: initiative, message: 'Initiative updated successfully' });
+    res.json({ 
+      success: true, 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Initiative updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -737,13 +720,14 @@ router.put('/csr/initiatives/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/csr/initiatives/:id', verifyAdmin, async (req, res) => {
   try {
-    const initiative = await CSRItem.findByIdAndDelete(req.params.id);
+    const result = await deleteItemWithImageCleanup('csr', req.params.id);
 
-    if (!initiative) {
-      return res.status(404).json({ success: false, message: 'Initiative not found' });
-    }
-
-    res.json({ success: true, message: 'Initiative deleted successfully' });
+    res.json({ 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Initiative deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -793,17 +777,15 @@ router.post('/events/items', verifyAdmin, async (req, res) => {
 
 router.put('/events/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const event = await EventItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true, runValidators: true }
-    );
+    const result = await updateItemWithImageCleanup('events', req.params.id, req.body);
 
-    if (!event) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
-
-    res.json({ success: true, data: event, message: 'Event updated successfully' });
+    res.json({ 
+      success: true, 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Event updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -811,13 +793,14 @@ router.put('/events/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/events/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const event = await EventItem.findByIdAndDelete(req.params.id);
+    const result = await deleteItemWithImageCleanup('events', req.params.id);
 
-    if (!event) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
-
-    res.json({ success: true, message: 'Event deleted successfully' });
+    res.json({ 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Event deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -868,17 +851,15 @@ router.post('/careers/positions', verifyAdmin, async (req, res) => {
 
 router.put('/careers/positions/:id', verifyAdmin, async (req, res) => {
   try {
-    const position = await CareerItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true, runValidators: true }
-    );
+    const result = await updateItemWithImageCleanup('careers', req.params.id, req.body);
 
-    if (!position) {
-      return res.status(404).json({ success: false, message: 'Position not found' });
-    }
-
-    res.json({ success: true, data: position, message: 'Position updated successfully' });
+    res.json({ 
+      success: true, 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Position updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -886,13 +867,14 @@ router.put('/careers/positions/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/careers/positions/:id', verifyAdmin, async (req, res) => {
   try {
-    const position = await CareerItem.findByIdAndDelete(req.params.id);
+    const result = await deleteItemWithImageCleanup('careers', req.params.id);
 
-    if (!position) {
-      return res.status(404).json({ success: false, message: 'Position not found' });
-    }
-
-    res.json({ success: true, message: 'Position deleted successfully' });
+    res.json({ 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Position deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -996,16 +978,15 @@ router.post('/leadership/items', verifyAdmin, async (req, res) => {
 
 router.put('/leadership/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updated = await LeadershipItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    if (updated) {
-      res.json({ success: true, data: updated, message: 'Leader updated successfully' });
-    } else {
-      res.status(404).json({ success: false, message: 'Leader not found' });
-    }
+    const result = await updateItemWithImageCleanup('leadership', req.params.id, req.body);
+
+    res.json({ 
+      success: true, 
+      data: result.item,
+      cleanup: result.cleanup,
+      message: 'Leader updated successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} old image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1013,12 +994,14 @@ router.put('/leadership/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/leadership/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await LeadershipItem.findByIdAndDelete(req.params.id);
-    if (deleted) {
-      res.json({ success: true, message: 'Leader deleted successfully' });
-    } else {
-      res.status(404).json({ success: false, message: 'Leader not found' });
-    }
+    const result = await deleteItemWithImageCleanup('leadership', req.params.id);
+
+    res.json({ 
+      success: true,
+      cleanup: result.cleanup,
+      message: 'Leader deleted successfully' + 
+        (result.cleanup.deletedCount > 0 ? ` (${result.cleanup.deletedCount} image(s) removed from cloud)` : '')
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1050,13 +1033,21 @@ router.post('/why-choose/items', verifyAdmin, async (req, res) => {
 
 router.put('/why-choose/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updated = await WhyChooseItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    if (updated) {
-      res.json({ success: true, data: updated, message: 'Reason updated successfully' });
+    const result = await updateItemWithImageCleanup('why-choose', req.params.id, {
+      ...req.body,
+      updatedAt: Date.now()
+    });
+    
+    if (result.item) {
+      const message = result.cleanup.deletedCount > 0 
+        ? `Reason updated successfully (${result.cleanup.deletedCount} old image(s) removed from cloud)`
+        : 'Reason updated successfully';
+      res.json({ 
+        success: true, 
+        data: result.item, 
+        cleanup: result.cleanup,
+        message 
+      });
     } else {
       res.status(404).json({ success: false, message: 'Reason not found' });
     }
@@ -1067,9 +1058,17 @@ router.put('/why-choose/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/why-choose/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await WhyChooseItem.findByIdAndDelete(req.params.id);
-    if (deleted) {
-      res.json({ success: true, message: 'Reason deleted successfully' });
+    const result = await deleteItemWithImageCleanup('why-choose', req.params.id);
+    
+    if (result.deletedCount > 0) {
+      const message = result.cleanup.deletedCount > 0
+        ? `Reason deleted successfully (${result.cleanup.deletedCount} image(s) removed from cloud)`
+        : 'Reason deleted successfully';
+      res.json({ 
+        success: true, 
+        cleanup: result.cleanup,
+        message 
+      });
     } else {
       res.status(404).json({ success: false, message: 'Reason not found' });
     }
@@ -1107,13 +1106,21 @@ router.post('/location-cards/items', verifyAdmin, async (req, res) => {
 
 router.put('/location-cards/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const updated = await LocationCardItem.findByIdAndUpdate(
-      req.params.id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
-    if (updated) {
-      res.json({ success: true, data: updated, message: 'Location updated successfully' });
+    const result = await updateItemWithImageCleanup('location-cards', req.params.id, {
+      ...req.body,
+      updatedAt: Date.now()
+    });
+    
+    if (result.item) {
+      const message = result.cleanup.deletedCount > 0 
+        ? `Location updated successfully (${result.cleanup.deletedCount} old image(s) removed from cloud)`
+        : 'Location updated successfully';
+      res.json({ 
+        success: true, 
+        data: result.item, 
+        cleanup: result.cleanup,
+        message 
+      });
     } else {
       res.status(404).json({ success: false, message: 'Location not found' });
     }
@@ -1124,9 +1131,17 @@ router.put('/location-cards/items/:id', verifyAdmin, async (req, res) => {
 
 router.delete('/location-cards/items/:id', verifyAdmin, async (req, res) => {
   try {
-    const deleted = await LocationCardItem.findByIdAndDelete(req.params.id);
-    if (deleted) {
-      res.json({ success: true, message: 'Location deleted successfully' });
+    const result = await deleteItemWithImageCleanup('location-cards', req.params.id);
+    
+    if (result.deletedCount > 0) {
+      const message = result.cleanup.deletedCount > 0
+        ? `Location deleted successfully (${result.cleanup.deletedCount} image(s) removed from cloud)`
+        : 'Location deleted successfully';
+      res.json({ 
+        success: true, 
+        cleanup: result.cleanup,
+        message 
+      });
     } else {
       res.status(404).json({ success: false, message: 'Location not found' });
     }

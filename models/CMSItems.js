@@ -7,6 +7,7 @@ const projectItemSchema = new mongoose.Schema({
     required: true,
   },
   location: String,
+  area: String, // Chennai subdivision area (tambaram, perugalathur, hastinapuram, gudavancherry, chithlapakam)
   description: String,
   category: {
     type: String,
@@ -54,6 +55,11 @@ const testimonialItemSchema = new mongoose.Schema({
     max: 5,
     default: 5,
   },
+  location: String,
+  order: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -82,6 +88,12 @@ const specialOfferItemSchema = new mongoose.Schema({
     default: 'active',
   },
   validUntil: Date,
+  contactPhone: String,
+  contactEmail: String,
+  order: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -209,6 +221,10 @@ const newsArticleSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  order: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -234,6 +250,10 @@ const serviceItemSchema = new mongoose.Schema({
   image: String,
   images: [String],
   category: String,
+  order: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -252,9 +272,14 @@ const csrItemSchema = new mongoose.Schema({
   },
   description: String,
   image: String,
+  location: String,
   category: String,
   impact: String,
   date: Date,
+  order: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -277,6 +302,11 @@ const eventItemSchema = new mongoose.Schema({
   location: String,
   category: String,
   registrationLink: String,
+  time: String,
+  order: {
+    type: Number,
+    default: 0,
+  },
   status: {
     type: String,
     enum: ['upcoming', 'ongoing', 'completed'],
@@ -305,10 +335,13 @@ const careerItemSchema = new mongoose.Schema({
     enum: ['full-time', 'part-time', 'contract', 'internship'],
   },
   experience: String,
+  salary: String,
   description: String,
   requirements: [String],
   responsibilities: [String],
+  benefits: [String],
   applyLink: String,
+  image: String,
   status: {
     type: String,
     enum: ['open', 'closed'],
